@@ -2,16 +2,17 @@
 
 #include "mapconfigdata.h"
 
-class CGroup
+class CConfig;
+
+class CGroup : public QWidget
 {
 public:
-	CGroup( unsigned short nMask );
+	CGroup( QWidget *parent );
 	virtual ~CGroup( );
 
 	virtual QByteArray onSave( ) = 0;
-	virtual void onLoad( QByteArray data ) = 0;
-
-	unsigned short m_Mask;
+	virtual void onLoad( QDataStream &data ) = 0;
+	virtual void onCFGRead( CConfig *CFG );
 
 };
 

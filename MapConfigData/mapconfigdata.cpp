@@ -12,13 +12,18 @@
 #include <ghost/gameslot.h>
 #include <ghost/map.h>
 
-MapConfigData::MapConfigData(QWidget *parent)
+#include "uiautohost.h"
+
+MapConfigData::MapConfigData( QWidget *parent)
 	: QMainWindow(parent)
 {
 	ui.setupUi(this);
 
 	connect( ui.MOpen, &QAction::triggered, this, &MapConfigData::menuOpen );
 	connect( ui.MSaveAs, &QAction::triggered, this, &MapConfigData::menuSaveAs );
+
+	connect( ui.MAdd, &QMenu::triggered, this, &MapConfigData::onAdd );
+	connect( ui.tabWidget, &QTabWidget::tabCloseRequested, this, &MapConfigData::onCloseTab );
 }
 
 MapConfigData::~MapConfigData()
@@ -119,11 +124,32 @@ void MapConfigData::menuSaveAs( )
 
 			write << (quint8)MCD_BYTE_VERSION;
 
-			// TODO
+			quint16 mask = 0;
+
 
 
 			if ( ui.MSaveMetadata->isChecked( ) )
-				write << (quint16)MCD_ALLOW_SEND_METADATA;
+				mask = mask | (quint16)MCD_ALLOW_SEND_METADATA;
+
+			QByteArray tabsData;
+
+			for ( auto i = m_Classes.begin( ); i != m_Classes.end( ); ++i )
+			{
+				mask = mask | i.key();
+				tabsData.append( i.value()->onSave( ) );
+			}
+
+			write << mask;
+
+			bytesUse += tabsData.size( );
+
+			if ( bytesUse > 512 )
+			{
+				//data too long;
+			}
+
+			for ( auto i = tabsData.begin( ); i != tabsData.end( ); ++i )
+				write << (quint8)*i;
 
 			for ( int i = 512 - bytesUse; i > 0; i-- )
 				write << (quint8)0;
@@ -141,6 +167,77 @@ void MapConfigData::menuSaveAs( )
 		}
 
 		writeMap.close( );
+	}
+}
+
+void MapConfigData::onAdd( QAction * action )
+{
+	int CustomIndex = action->property( "CustomIndex" ).toInt( );
+	AddTab( CustomIndex );
+	UpdateAllowAddTabs( );
+}
+
+void MapConfigData::onCloseTab( int index )
+{
+	if ( index == 0 )
+	{
+		QMessageBox::information( this, "Информация", "Справку закрыть нельзя" );
+		return;
+	}
+	
+	for ( auto i = m_Classes.begin( ); i != m_Classes.end( ); ++i )
+	{
+		if ( i.value( ) == ui.tabWidget->widget( index ) )
+		{
+			QMessageBox::StandardButton reply;
+			reply = QMessageBox::question( this, "Закрыть вкладку?", "Все данные вкладки будут уничтожены.",
+				QMessageBox::Yes | QMessageBox::No );
+
+			if ( reply == QMessageBox::Yes ) {
+				m_Classes.erase( i );
+				delete ui.tabWidget->widget( index );
+				UpdateAllowAddTabs( );
+			}
+			break;
+		}
+	}
+}
+
+void MapConfigData::UpdateAllowAddTabs( )
+{
+	QList<QAction *> Actions = ui.MAdd->actions( );
+	for ( auto j = Actions.begin( ); j != Actions.end( ); ++j )
+	{
+		( *j )->setDisabled( false );
+		for ( auto i = m_Classes.begin( ); i != m_Classes.end( ); ++i )
+		{
+			if ( ( *j )->property( "CustomIndex" ).toInt( ) == i.key( ) )
+			{
+				( *j )->setDisabled( true );
+			}
+		}
+	}
+
+	if ( ui.tabWidget->count( ) > 1 )
+	{
+		ui.tabWidget->setTabsClosable( true );
+	}
+	else
+	{
+		ui.tabWidget->setTabsClosable( false );
+	}
+}
+
+void MapConfigData::AddTab( int index )
+{
+	switch ( index )
+	{
+	case MCD_CUSTOM_AUTOHOST:
+		m_Classes[index] = new UIAutohost( this );
+		ui.tabWidget->addTab( m_Classes[index], "Autohost" );
+		break;
+	default:
+		break;
 	}
 }
 
@@ -184,6 +281,15 @@ void MapConfigData::menuOpen( )
 					QMessageBox::critical( this, "Ошибка", "Эта карта запакована новой версией MCD. Редактирование невозможно." );
 				else
 				{
+					for ( auto i = m_Classes.begin( ); i != m_Classes.end( ); ++i )
+					{
+						delete i.value( );
+					}
+
+					m_Classes.clear( );
+					
+
+
 					data.setByteOrder( QDataStream::LittleEndian );
 					quint16 editMask;
 
@@ -192,12 +298,27 @@ void MapConfigData::menuOpen( )
 					ui.MSaveAs->setEnabled( true );
 					ui.MSaveMetadata->setEnabled( true );
 					ui.MSaveMetadata->setChecked( false );
+					ui.MAdd->setEnabled( true );
 
 					m_CurrentFilePatch = fileName;
 
 					if ( editMask & MCD_ALLOW_SEND_METADATA )
 						ui.MSaveMetadata->setChecked( true );
 
+					for ( int i = 1; i < 16; i++ )
+					{
+						if ( editMask & ( 1 << i ) )
+						{
+							AddTab( 1 << i );
+						}
+					}
+
+					UpdateAllowAddTabs( );
+
+					for ( auto i = m_Classes.begin( ); i != m_Classes.end( ); ++i )
+					{
+						i.value()->onLoad( data );
+					}
 				}
 
 				file.close( );

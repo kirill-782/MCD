@@ -1,12 +1,14 @@
 #include "group.h"
 
-
-
-CGroup::CGroup( unsigned short nMask ) : m_Mask( nMask )
+CGroup::CGroup( QWidget *parent ) : QWidget( parent )
 {
 }
 
 
 CGroup::~CGroup( )
+{
+}
+
+void CGroup::onCFGRead( CConfig * CFG )
 {
 }

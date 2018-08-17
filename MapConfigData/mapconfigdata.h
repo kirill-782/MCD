@@ -12,6 +12,8 @@
 #include "ui_mapconfigdata.h"
 #include <QVector>
 
+class CGroup;
+
 class MapConfigData : public QMainWindow
 {
 	Q_OBJECT
@@ -30,9 +32,17 @@ public:
 private slots:
 	void menuOpen( );
 	void menuSaveAs( );
+	void onAdd( QAction *action );
+	void onCloseTab( int index );
 
 private:
 	Ui::MapConfigDataClass ui;
+
+	QMap<unsigned short, CGroup *> m_Classes;
+	void UpdateAllowAddTabs( );
+
+	void AddTab( int index );
+
 };
 
 #endif // MAPCONFIGDATA_H
