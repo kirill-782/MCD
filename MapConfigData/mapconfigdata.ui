@@ -7,13 +7,13 @@
     <x>0</x>
     <y>0</y>
     <width>600</width>
-    <height>400</height>
+    <height>420</height>
    </rect>
   </property>
   <property name="minimumSize">
    <size>
     <width>600</width>
-    <height>400</height>
+    <height>420</height>
    </size>
   </property>
   <property name="windowTitle">
@@ -97,6 +97,7 @@
      <string>Добавить</string>
     </property>
     <addaction name="MAutohost"/>
+    <addaction name="action"/>
    </widget>
    <addaction name="MFile"/>
    <addaction name="MAdd"/>
@@ -126,11 +127,22 @@
    </property>
   </action>
   <action name="MAutohost">
+   <property name="enabled">
+    <bool>true</bool>
+   </property>
    <property name="text">
     <string>Автохост</string>
    </property>
    <property name="CustomIndex" stdset="0">
     <number>8</number>
+   </property>
+  </action>
+  <action name="action">
+   <property name="text">
+    <string>Слоты</string>
+   </property>
+   <property name="CustomIndex" stdset="0">
+    <number>2</number>
    </property>
   </action>
  </widget>

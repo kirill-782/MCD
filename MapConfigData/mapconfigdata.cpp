@@ -13,6 +13,7 @@
 #include <ghost/map.h>
 
 #include "uiautohost.h"
+#include "uislots.h"
 
 MapConfigData::MapConfigData( QWidget *parent)
 	: QMainWindow(parent)
@@ -72,6 +73,8 @@ void MapConfigData::escapeColorString( QString & str )
 	str = str.replace( QRegExp( "\\|c[A-F0-9a-f]{8}" ), "" );
 	str = str.replace( "\\|r", "" );
 	str = str.replace( "\\|n", "" );
+	str = str.replace( "\\|R", "" );
+	str = str.replace( "\\|N", "" );
 }
 
 void MapConfigData::menuSaveAs( )
@@ -126,14 +129,12 @@ void MapConfigData::menuSaveAs( )
 
 			quint16 mask = 0;
 
-
-
 			if ( ui.MSaveMetadata->isChecked( ) )
 				mask = mask | (quint16)MCD_ALLOW_SEND_METADATA;
 
 			QByteArray tabsData;
 
-			for ( auto i = m_Classes.begin( ); i != m_Classes.end( ); ++i )
+			for ( auto i = m_Tabs.begin( ); i != m_Tabs.end( ); ++i )
 			{
 				mask = mask | i.key();
 				tabsData.append( i.value()->onSave( ) );
@@ -185,7 +186,7 @@ void MapConfigData::onCloseTab( int index )
 		return;
 	}
 	
-	for ( auto i = m_Classes.begin( ); i != m_Classes.end( ); ++i )
+	for ( auto i = m_Tabs.begin( ); i != m_Tabs.end( ); ++i )
 	{
 		if ( i.value( ) == ui.tabWidget->widget( index ) )
 		{
@@ -194,7 +195,7 @@ void MapConfigData::onCloseTab( int index )
 				QMessageBox::Yes | QMessageBox::No );
 
 			if ( reply == QMessageBox::Yes ) {
-				m_Classes.erase( i );
+				m_Tabs.erase( i );
 				delete ui.tabWidget->widget( index );
 				UpdateAllowAddTabs( );
 			}
@@ -209,7 +210,7 @@ void MapConfigData::UpdateAllowAddTabs( )
 	for ( auto j = Actions.begin( ); j != Actions.end( ); ++j )
 	{
 		( *j )->setDisabled( false );
-		for ( auto i = m_Classes.begin( ); i != m_Classes.end( ); ++i )
+		for ( auto i = m_Tabs.begin( ); i != m_Tabs.end( ); ++i )
 		{
 			if ( ( *j )->property( "CustomIndex" ).toInt( ) == i.key( ) )
 			{
@@ -232,9 +233,13 @@ void MapConfigData::AddTab( int index )
 {
 	switch ( index )
 	{
+	case MCD_CUSTOM_SLOT:
+		m_Tabs[index] = new UISlots( this );
+		ui.tabWidget->addTab( m_Tabs[index], "Слоты" );
+		break;
 	case MCD_CUSTOM_AUTOHOST:
-		m_Classes[index] = new UIAutohost( this );
-		ui.tabWidget->addTab( m_Classes[index], "Autohost" );
+		m_Tabs[index] = new UIAutohost( this );
+		ui.tabWidget->addTab( m_Tabs[index], "Автохост" );
 		break;
 	default:
 		break;
@@ -243,7 +248,6 @@ void MapConfigData::AddTab( int index )
 
 void MapConfigData::menuOpen( )
 {
-	
 	QString fileName = QFileDialog::getOpenFileName( this, "Открыть", "", "*.w3x *.w3m" );
 
 	if ( fileName.size( ) > 0 )
@@ -277,19 +281,17 @@ void MapConfigData::menuOpen( )
 
 				data >> version;
 
-				if ( version > MCD_BYTE_VERSION )
-					QMessageBox::critical( this, "Ошибка", "Эта карта запакована новой версией MCD. Редактирование невозможно." );
+				if ( version != MCD_BYTE_VERSION )
+					QMessageBox::critical( this, "Ошибка", "Эта версия MCD не поддерживает схему, по которой запакованы данные" );
 				else
 				{
-					for ( auto i = m_Classes.begin( ); i != m_Classes.end( ); ++i )
+					for ( auto i = m_Tabs.begin( ); i != m_Tabs.end( ); ++i )
 					{
 						delete i.value( );
 					}
 
-					m_Classes.clear( );
+					m_Tabs.clear( );
 					
-
-
 					data.setByteOrder( QDataStream::LittleEndian );
 					quint16 editMask;
 
@@ -315,7 +317,7 @@ void MapConfigData::menuOpen( )
 
 					UpdateAllowAddTabs( );
 
-					for ( auto i = m_Classes.begin( ); i != m_Classes.end( ); ++i )
+					for ( auto i = m_Tabs.begin( ); i != m_Tabs.end( ); ++i )
 					{
 						i.value()->onLoad( data );
 					}
@@ -326,19 +328,6 @@ void MapConfigData::menuOpen( )
 				QFileInfo fileInfo( file.fileName( ) );
 				QString filename( fileInfo.fileName( ) );
 
-				CConfig cfg;
-				cfg.Set( "map_path", "Maps\\Download\\" + filename.toStdString( ) );
-				cfg.Set( "map_localpath", m_CurrentFilePatch.toStdString( ) );
-
-				CMap *map = new CMap( &cfg, filename.toStdString( ) );
-
-				qDebug( ) << map->GetSlots( ).size( );
-				qDebug( ) << map->GetValid( );
-
-				vector<string> *x = CONSOLE_Get( );
-
-				for ( vector<string> :: iterator i = x->begin( ); i != x->end( ); i++ )
-					qDebug( ) << QString::fromStdString(*i);
 			}
 			else
 				QMessageBox::critical( this, "Ошибка", "Не удалось открыть файл для чтения." );

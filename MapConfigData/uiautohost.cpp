@@ -1,7 +1,7 @@
 #include "uiautohost.h"
 
 UIAutohost::UIAutohost( MapConfigData *parent )
-	: CGroup( parent), m_Window( parent )
+	: CGroup( parent)
 {
 	ui.setupUi(this);
 

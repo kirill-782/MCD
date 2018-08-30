@@ -12,3 +12,8 @@ CGroup::~CGroup( )
 void CGroup::onCFGRead( CConfig * CFG )
 {
 }
+
+QVector<QString> CGroup::onCFGGenerate( )
+{
+	return QVector<QString>( );
+}

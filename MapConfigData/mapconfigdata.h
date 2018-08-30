@@ -38,7 +38,7 @@ private slots:
 private:
 	Ui::MapConfigDataClass ui;
 
-	QMap<unsigned short, CGroup *> m_Classes;
+	QMap<unsigned short, CGroup *> m_Tabs;
 	void UpdateAllowAddTabs( );
 
 	void AddTab( int index );

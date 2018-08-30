@@ -643,46 +643,6 @@ void CMap :: CheckValid( )
 {
 	// todotodo: should this code fix any errors it sees rather than just warning the user?
 
-	if( m_MapPath.empty( ) || m_MapPath.length( ) > 53 )
-	{
-		m_Valid = false;
-		CONSOLE_Print( "[MAP] invalid map_path detected" );
-	}
-	else if( m_MapPath[0] == '\\' )
-		CONSOLE_Print( "[MAP] warning - map_path starts with '\\', any replays saved by GHost++ will not be playable in Warcraft III" );
-
-	if( m_MapPath.find( '/' ) != string :: npos )
-		CONSOLE_Print( "[MAP] warning - map_path contains forward slashes '/' but it must use Windows style back slashes '\\'" );
-
-	if( m_MapSize.size( ) != 4 )
-	{
-		m_Valid = false;
-		CONSOLE_Print( "[MAP] invalid map_size detected" );
-	}
-	else if( !m_MapData.empty( ) && m_MapData.size( ) != UTIL_ByteArrayToUInt32( m_MapSize, false ) )
-	{
-		m_Valid = false;
-		CONSOLE_Print( "[MAP] invalid map_size detected - size mismatch with actual map data" );
-	}
-
-	if( m_MapInfo.size( ) != 4 )
-	{
-		m_Valid = false;
-		CONSOLE_Print( "[MAP] invalid map_info detected" );
-	}
-
-	if( m_MapCRC.size( ) != 4 )
-	{
-		m_Valid = false;
-		CONSOLE_Print( "[MAP] invalid map_crc detected" );
-	}
-
-	if( m_MapSHA1.size( ) != 20 )
-	{
-		m_Valid = false;
-		CONSOLE_Print( "[MAP] invalid map_sha1 detected" );
-	}
-
 	if( m_MapSpeed != MAPSPEED_SLOW && m_MapSpeed != MAPSPEED_NORMAL && m_MapSpeed != MAPSPEED_FAST )
 	{
 		m_Valid = false;

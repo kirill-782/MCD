@@ -16,8 +16,6 @@ public:
 	virtual QByteArray onSave( );
 	virtual void onLoad( QDataStream &data );
 
-	MapConfigData *m_Window;
-
 private:
 	Ui::UIAutohost ui;
 };
