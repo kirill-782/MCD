@@ -281,7 +281,7 @@ void MapConfigData::menuOpen( )
 
 				data >> version;
 
-				if ( version != MCD_BYTE_VERSION )
+				if ( version > MCD_BYTE_VERSION )
 					QMessageBox::critical( this, "Ошибка", "Эта версия MCD не поддерживает схему, по которой запакованы данные" );
 				else
 				{
