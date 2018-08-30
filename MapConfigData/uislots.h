@@ -9,6 +9,18 @@ class UISlot;
 class CGameSlot;
 class QSpinBox;
 
+//
+// BYTEMAP
+//
+//  1 BYTE			-> FLAGS
+//  1 BYTE			-> SLOTS COUNT
+//	FOR 0 .. SLOTS COUNT
+//		1 BYTE			-> CONTROLLER 0 - open, 1 - close, 2 - comp easy, 3 - comp normal, 4 - comp hard
+//		1 BYTE			-> RACE ( LIKE gameslot.h )
+//		1 BYTE			-> TEAM
+//		1 BYTE			-> COLOR
+//		1 BYTE			-> HCANDICAP
+
 class UISlots : public CGroup
 {
 	Q_OBJECT

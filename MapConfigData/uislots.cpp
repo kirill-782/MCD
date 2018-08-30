@@ -329,12 +329,6 @@ QByteArray UISlot::getSlotInfo( )
 	quint8 controller = UISlotStatus->currentIndex( );
 	quint8 race = 32;
 
-	UIRace->addItem( "Numan" );
-	UIRace->addItem( "Orc" );
-	UIRace->addItem( "NightElf" );
-	UIRace->addItem( "Undead" );
-	UIRace->addItem( "Random" );
-
 	switch ( UIRace->currentIndex( ) )
 	{
 	case 0:

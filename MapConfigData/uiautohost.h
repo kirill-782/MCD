@@ -5,6 +5,14 @@
 #include "ui_uiautohost.h"
 #include "group.h"
 
+//
+// BYTEMAP
+//
+//	1 BYTE			-> GAME COUNT
+//  1 BYTE			-> START PLAYERS
+//  STRING			-> GAME NAME
+//
+
 class UIAutohost : public CGroup
 {
 	Q_OBJECT
