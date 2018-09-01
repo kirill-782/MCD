@@ -88,6 +88,8 @@
     <addaction name="MOpen"/>
     <addaction name="MSaveAs"/>
     <addaction name="MSaveMetadata"/>
+    <addaction name="separator"/>
+    <addaction name="MUpload"/>
    </widget>
    <widget class="QMenu" name="MAdd">
     <property name="enabled">
@@ -143,6 +145,14 @@
    </property>
    <property name="CustomIndex" stdset="0">
     <number>2</number>
+   </property>
+  </action>
+  <action name="MUpload">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>Залить карту на хостбот</string>
    </property>
   </action>
  </widget>

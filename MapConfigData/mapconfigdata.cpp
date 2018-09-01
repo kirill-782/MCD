@@ -1,9 +1,11 @@
-#include "mapconfigdata.h"
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QDebug>
 #include <QBuffer>
 #include <QDataStream>
+#include <QTCPSocket>
+
+#include "mapconfigdata.h"
 
 #define __STORMLIB_SELF__
 #include <StormLib.h>
@@ -25,6 +27,10 @@ MapConfigData::MapConfigData( QWidget *parent)
 
 	connect( ui.MAdd, &QMenu::triggered, this, &MapConfigData::onAdd );
 	connect( ui.tabWidget, &QTabWidget::tabCloseRequested, this, &MapConfigData::onCloseTab );
+
+	connect( ui.MUpload, &QAction::triggered, this, &MapConfigData::onUploadReqest );
+
+	m_Socket = NULL;
 }
 
 MapConfigData::~MapConfigData()
@@ -77,6 +83,102 @@ void MapConfigData::escapeColorString( QString & str )
 	str = str.replace( "\\|N", "" );
 }
 
+void MapConfigData::AppendLength( QByteArray & b )
+{
+	if ( b.size( ) < 4 || b.size( ) > 0xFFFF )
+		return;
+	QByteArray len;
+	QDataStream ds( &len, QIODevice::ReadWrite );
+	ds.setByteOrder( QDataStream::LittleEndian );
+	ds << (quint16)b.size( );
+
+	b[2] = len[0];
+	b[3] = len[1];
+}
+
+void MapConfigData::onPackage( quint8 pType, QByteArray pData )
+{
+	QByteArray b;
+	QDataStream ds( &b, QIODevice::ReadWrite );
+	QByteArray mappart;
+
+	QDataStream pds( pData );
+	pds.setByteOrder( QDataStream::LittleEndian );
+
+	quint32 uploaded;
+
+	switch ( pType )
+	{
+	case 0x01: // MAP UPLOAD ALLOW
+		ds << (quint8)MU_HEADER_CONSTANT;
+		ds << (quint8)0x02;
+		ds << (quint8)0;
+		ds << (quint8)0;
+		
+		for ( ; m_UploadOffset < m_MapData.size( ); m_UploadOffset++ )
+		{
+			if ( mappart.size( ) >= 6000 )
+				break;
+			mappart.push_back( m_MapData[m_UploadOffset] );
+		}
+
+		ds.writeRawData( mappart.data( ), mappart.size( ) );
+		AppendLength( b );
+
+		if ( m_UploadOffset >= m_MapData.size( ) )
+		{
+			b.push_back( MU_HEADER_CONSTANT );
+			b.push_back( 0x03 );
+			b.push_back( 4 );
+			b.push_back( (char)0 );
+		}
+
+		m_Socket->write( b );
+		break;
+	case 0x02:
+		ds << (quint8)MU_HEADER_CONSTANT;
+		ds << (quint8)0x02;
+		ds << (quint8)0;
+		ds << (quint8)0;
+
+		for ( ; m_UploadOffset < m_MapData.size( ); m_UploadOffset++ )
+		{
+			if ( mappart.size( ) >= 40000 )
+				break;
+			mappart.push_back( m_MapData[m_UploadOffset] );
+		}
+
+		ds.writeRawData( mappart.data( ), mappart.size( ) );
+		AppendLength( b );
+
+		if ( m_UploadOffset >= m_MapData.size( ) )
+		{
+			b.push_back( MU_HEADER_CONSTANT );
+			b.push_back( 0x03 );
+			b.push_back( 4 );
+			b.push_back( (char)0 );
+		}
+
+		m_Socket->write( b );
+
+		pds.skipRawData( 4 );
+		pds >> uploaded;
+
+		ui.MUpload->setText( "Выгружено: " + QString::number( (int)(((float)uploaded / (float)m_MapData.size( ) ) * 100 ) ) + "%" );
+		break;
+
+	case 0x03:
+		pds.skipRawData( 4 );
+		QMessageBox::warning( this, "Выгружено", "Все выгружено. Присвоенное имя карты: <b>" + readNullTremilanedString( pds ) + "</b>" );
+		m_Socket->disconnect( );
+		break;
+	case 0xFF:
+		pds.skipRawData( 4 );
+		QMessageBox::critical( this, "Ошибко", readNullTremilanedString( pds ) );
+		m_Socket->disconnect( );
+	}
+}
+
 void MapConfigData::menuSaveAs( )
 {
 	QString fileName = QFileDialog::getSaveFileName( this, "Сохранить как", m_CurrentFilePatch, "*.w3x *.w3m" );
@@ -87,7 +189,12 @@ void MapConfigData::menuSaveAs( )
 
 		if ( writeMap.open( QIODevice::ReadWrite | QIODevice::Truncate ) )
 		{
-			QDataStream write( &writeMap );
+			m_EditedMapData.clear( );
+
+			QFileInfo fi( fileName );
+			m_UplpadMapName = fi.fileName( );
+
+			QDataStream write( &m_EditedMapData, QIODevice::WriteOnly );
 			QDataStream read( m_SourceMapData );
 
 			quint32 GrabInt = 0;
@@ -102,12 +209,13 @@ void MapConfigData::menuSaveAs( )
 			const char *mapBytes = mapName.constData( );
 			write.writeRawData( mapBytes, mapName.size( ) + 1 );
 
-			read >> GrabInt;
-			write << GrabInt;
+			// Write last 8 bytes
+
 			read >> GrabInt;
 			write << GrabInt;
 
-			// Write last 8 bytes
+			read >> GrabInt;
+			write << GrabInt;
 
 			int bytesUse = 17 + mapName.size( ); // MPQ START = 512 byte
 
@@ -153,7 +261,10 @@ void MapConfigData::menuSaveAs( )
 				write << (quint8)*i;
 
 			for ( int i = 512 - bytesUse; i > 0; i-- )
+			{
 				write << (quint8)0;
+			}
+				
 
 			while ( !read.atEnd( ) )
 			{
@@ -167,7 +278,11 @@ void MapConfigData::menuSaveAs( )
 			QMessageBox::critical( this, "Ошибка", "Не удалось записать карту." );
 		}
 
-		writeMap.close( );
+		qDebug( ) << m_EditedMapData.size( );
+
+		writeMap.write( m_EditedMapData );
+
+		
 	}
 }
 
@@ -202,6 +317,88 @@ void MapConfigData::onCloseTab( int index )
 			break;
 		}
 	}
+}
+
+void MapConfigData::onUploadReqest( )
+{
+	if( !m_Socket )
+		m_Socket = new QTcpSocket( this );
+
+	m_Socket->reset( );
+	m_Socket->connectToHost( "irinabot.ru", 9874 );
+
+	ui.MUpload->setDisabled( true );
+	ui.MUpload->setText( "Подключаюсь..." );
+
+	connect( m_Socket, &QTcpSocket::connected, this, &MapConfigData::onSocketConnected );
+	connect( m_Socket, &QTcpSocket::disconnected, this, &MapConfigData::onSocketDisconnected );
+	connect( m_Socket, &QTcpSocket::readyRead, this, &MapConfigData::onSocketData );
+
+	if ( m_EditedMapData.isEmpty( ) )
+		m_MapData = m_SourceMapData;
+	else
+		m_MapData = m_EditedMapData;
+
+	m_UploadOffset = 0;
+}
+
+void MapConfigData::onSocketData( )
+{
+	m_Buffer.append( m_Socket->readAll( ) );
+
+	while ( m_Buffer.size( ) >= 4 )
+	{
+		QDataStream ds( m_Buffer );
+		ds.setByteOrder( QDataStream::LittleEndian );
+
+		quint8 pHeader;
+		quint8 pType;
+		quint16 pLength;
+
+		ds >> pHeader;
+		ds >> pType;
+		ds >> pLength;
+
+		if ( pHeader != MU_HEADER_CONSTANT )
+		{
+			m_Socket->disconnect( );
+			return;
+		}
+
+		if ( m_Buffer.size( ) >= pLength )
+		{
+			onPackage( pType, QByteArray( m_Buffer.data( ), pLength ) );
+			m_Buffer = m_Buffer.remove( 0, pLength );
+		}
+		else
+			break;
+	}
+}
+
+void MapConfigData::onSocketConnected( )
+{
+	// SEND MAP UPLOAD REQ
+
+	QByteArray b;
+	QDataStream stream( &b, QIODevice::WriteOnly );
+	stream.setByteOrder( QDataStream::LittleEndian );
+	stream << (quint8)MU_HEADER_CONSTANT;
+	stream << (quint8)0x01;
+	stream << (quint8)0;
+	stream << (quint8)0;
+
+	stream << m_MapData.size( );
+	stream.writeRawData( m_UplpadMapName.toStdString( ).c_str( ), m_UplpadMapName.toStdString( ).size( ) + 1 );
+	AppendLength( b );
+
+	m_Socket->write( b );
+
+}
+
+void MapConfigData::onSocketDisconnected( )
+{
+	ui.MUpload->setText( "Залить карту на хостбот" );
+	ui.MUpload->setDisabled( false );
 }
 
 void MapConfigData::UpdateAllowAddTabs( )
@@ -263,6 +460,12 @@ void MapConfigData::menuOpen( )
 			if ( file.open( QIODevice::ReadOnly ) )
 			{
 				m_SourceMapData = file.readAll( );
+				m_EditedMapData.clear( );
+
+				ui.MUpload->setEnabled( true );
+
+				QFileInfo fi( fileName );
+				m_UplpadMapName = fi.fileName( );
 
 				QDataStream data( m_SourceMapData );
 				data.skipRawData( 8 );
@@ -324,10 +527,6 @@ void MapConfigData::menuOpen( )
 				}
 
 				file.close( );
-
-				QFileInfo fileInfo( file.fileName( ) );
-				QString filename( fileInfo.fileName( ) );
-
 			}
 			else
 				QMessageBox::critical( this, "Ошибка", "Не удалось открыть файл для чтения." );
