@@ -90,6 +90,7 @@
     <addaction name="MSaveMetadata"/>
     <addaction name="separator"/>
     <addaction name="MUpload"/>
+    <addaction name="actionLAN"/>
    </widget>
    <widget class="QMenu" name="MAdd">
     <property name="enabled">
@@ -153,6 +154,14 @@
    </property>
    <property name="text">
     <string>Залить карту на хостбот</string>
+   </property>
+  </action>
+  <action name="actionLAN">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>LAN</string>
    </property>
   </action>
  </widget>

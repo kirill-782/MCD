@@ -2,8 +2,10 @@
 #include <QMessageBox>
 #include <QDebug>
 #include <QBuffer>
+#include <QTimer>
 #include <QDataStream>
-#include <QTCPSocket>
+#include <QtWebSockets/QWebSocket>
+#include <qabstractsocket.h>
 
 #include "mapconfigdata.h"
 
@@ -17,25 +19,37 @@
 #include "uiautohost.h"
 #include "uislots.h"
 
+#include "lan.hpp"
+
 MapConfigData::MapConfigData( QWidget *parent)
 	: QMainWindow(parent)
 {
+	m_Uploading = false;
+	m_UploaedPartsQueue = 0;
+	m_UploaedPartsMaxQueue = 2;
 	ui.setupUi(this);
 
 	connect( ui.MOpen, &QAction::triggered, this, &MapConfigData::menuOpen );
 	connect( ui.MSaveAs, &QAction::triggered, this, &MapConfigData::menuSaveAs );
+	connect( ui.actionLAN, &QAction::triggered, this, &MapConfigData::openLANWindow );
 
 	connect( ui.MAdd, &QMenu::triggered, this, &MapConfigData::onAdd );
 	connect( ui.tabWidget, &QTabWidget::tabCloseRequested, this, &MapConfigData::onCloseTab );
 
 	connect( ui.MUpload, &QAction::triggered, this, &MapConfigData::onUploadReqest );
 
-	m_Socket = NULL;
+	m_Timer = new QTimer( this );
+
+	m_Timer->start( 25 );
+	connect( m_Timer, &QTimer::timeout, this, &MapConfigData::uploadPart );
+
+	m_LanWindow = NULL;
+	m_WebSocket = NULL;
 }
 
 MapConfigData::~MapConfigData()
 {
-
+	QApplication::exit( );
 }
 
 QString MapConfigData::readNullTremilanedString( QDataStream &stream )
@@ -77,6 +91,7 @@ QByteArray MapConfigData::readNullTremilanedByte( QDataStream & stream )
 void MapConfigData::escapeColorString( QString & str )
 {
 	str = str.replace( QRegExp( "\\|c[A-F0-9a-f]{8}" ), "" );
+	str = str.replace( QRegExp( "\\|C[A-F0-9a-f]{8}" ), "" );
 	str = str.replace( "\\|r", "" );
 	str = str.replace( "\\|n", "" );
 	str = str.replace( "\\|R", "" );
@@ -94,89 +109,6 @@ void MapConfigData::AppendLength( QByteArray & b )
 
 	b[2] = len[0];
 	b[3] = len[1];
-}
-
-void MapConfigData::onPackage( quint8 pType, QByteArray pData )
-{
-	QByteArray b;
-	QDataStream ds( &b, QIODevice::ReadWrite );
-	QByteArray mappart;
-
-	QDataStream pds( pData );
-	pds.setByteOrder( QDataStream::LittleEndian );
-
-	quint32 uploaded;
-
-	switch ( pType )
-	{
-	case 0x01: // MAP UPLOAD ALLOW
-		ds << (quint8)MU_HEADER_CONSTANT;
-		ds << (quint8)0x02;
-		ds << (quint8)0;
-		ds << (quint8)0;
-		
-		for ( ; m_UploadOffset < m_MapData.size( ); m_UploadOffset++ )
-		{
-			if ( mappart.size( ) >= 6000 )
-				break;
-			mappart.push_back( m_MapData[m_UploadOffset] );
-		}
-
-		ds.writeRawData( mappart.data( ), mappart.size( ) );
-		AppendLength( b );
-
-		if ( m_UploadOffset >= m_MapData.size( ) )
-		{
-			b.push_back( MU_HEADER_CONSTANT );
-			b.push_back( 0x03 );
-			b.push_back( 4 );
-			b.push_back( (char)0 );
-		}
-
-		m_Socket->write( b );
-		break;
-	case 0x02:
-		ds << (quint8)MU_HEADER_CONSTANT;
-		ds << (quint8)0x02;
-		ds << (quint8)0;
-		ds << (quint8)0;
-
-		for ( ; m_UploadOffset < m_MapData.size( ); m_UploadOffset++ )
-		{
-			if ( mappart.size( ) >= 40000 )
-				break;
-			mappart.push_back( m_MapData[m_UploadOffset] );
-		}
-
-		ds.writeRawData( mappart.data( ), mappart.size( ) );
-		AppendLength( b );
-
-		if ( m_UploadOffset >= m_MapData.size( ) )
-		{
-			b.push_back( MU_HEADER_CONSTANT );
-			b.push_back( 0x03 );
-			b.push_back( 4 );
-			b.push_back( (char)0 );
-		}
-
-		m_Socket->write( b );
-
-		pds.skipRawData( 4 );
-		pds >> uploaded;
-
-		ui.MUpload->setText( "Выгружено: " + QString::number( (int)(((float)uploaded / (float)m_MapData.size( ) ) * 100 ) ) + "%" );
-		break;
-
-	case 0x03:
-		pds.skipRawData( 4 );
-		QMessageBox::warning( this, "Выгружено", "Все выгружено. Присвоенное имя карты: <b>" + readNullTremilanedString( pds ) + "</b>" );
-		m_Socket->disconnect( );
-		break;
-	case 0xFF:
-		pds.skipRawData( 4 );
-		QMessageBox::critical( this, "Ошибко", readNullTremilanedString( pds ) );
-		m_Socket->disconnect( );
-	}
 }
 
 void MapConfigData::menuSaveAs( )
@@ -319,20 +251,69 @@ void MapConfigData::onCloseTab( int index )
 	}
 }
 
+void MapConfigData::uploadPart( )
+{
+	m_Timer->start( 250 );
+
+	if ( m_Uploading && !m_MapData.isEmpty( ) && m_WebSocket )
+	{
+		if ( m_UploaedPartsQueue == 0 )
+			m_UploaedPartsMaxQueue += 2;
+		else
+			m_UploaedPartsMaxQueue -= 1;
+
+		if ( m_UploaedPartsMaxQueue < 2 )
+			m_UploaedPartsMaxQueue = 2;
+
+		while ( m_UploaedPartsQueue < m_UploaedPartsMaxQueue )
+		{
+
+			m_UploaedPartsQueue++;
+			QByteArray answer;
+			QDataStream answerstream( &answer, QIODevice::WriteOnly );
+			answerstream.setByteOrder( QDataStream::LittleEndian );
+
+			m_Uploading = true;
+
+			QByteArray mappart;
+
+			answerstream << (quint8)2;
+			answerstream << (quint8)1;
+
+			for ( ; m_UploadOffset < m_MapData.size( ); m_UploadOffset++ )
+			{
+				if ( mappart.size( ) >= 20000 )
+					break;
+				mappart.push_back( m_MapData[m_UploadOffset] );
+			}
+
+			answerstream.writeRawData( mappart.data( ), mappart.size( ) );
+
+			m_WebSocket->sendBinaryMessage( answer );
+
+			if ( m_UploadOffset >= m_MapData.size( ) )
+			{
+				m_WebSocket->sendBinaryMessage( { 2,2 } );
+				m_Uploading = false;
+			}
+				
+		}
+
+	}
+}
+
 void MapConfigData::onUploadReqest( )
 {
-	if( !m_Socket )
-		m_Socket = new QTcpSocket( this );
-
-	m_Socket->reset( );
-	m_Socket->connectToHost( "irinabot.ru", 9874 );
-
-	ui.MUpload->setDisabled( true );
-	ui.MUpload->setText( "Подключаюсь..." );
-
-	connect( m_Socket, &QTcpSocket::connected, this, &MapConfigData::onSocketConnected );
-	connect( m_Socket, &QTcpSocket::disconnected, this, &MapConfigData::onSocketDisconnected );
-	connect( m_Socket, &QTcpSocket::readyRead, this, &MapConfigData::onSocketData );
+	if ( !m_WebSocket )
+	{
+		m_WebSocket = new QWebSocket( );
+		m_WebSocket->open( QUrl( "ws://irinabot.ru/ghost/" ) );
+		connect( m_WebSocket, &QWebSocket::connected, this, &MapConfigData::onSocketConnected );
+		connect( m_WebSocket, &QWebSocket::disconnected, this, &MapConfigData::onSocketDisconnected );
+		connect( m_WebSocket, &QWebSocket::binaryMessageReceived, this, &MapConfigData::onSocketData );
+		ui.MUpload->setDisabled( true );
+		ui.MUpload->setText( "Подключаюсь..." );
+	}
 
 	if ( m_EditedMapData.isEmpty( ) )
 		m_MapData = m_SourceMapData;
@@ -342,36 +323,59 @@ void MapConfigData::onUploadReqest( )
 	m_UploadOffset = 0;
 }
 
-void MapConfigData::onSocketData( )
+void MapConfigData::onSocketData( QByteArray message )
 {
-	m_Buffer.append( m_Socket->readAll( ) );
+	if ( message.size( ) < 2 )
+		return;
 
-	while ( m_Buffer.size( ) >= 4 )
+	QDataStream pds( message );
+	pds.setByteOrder( QDataStream::LittleEndian );
+
+	quint8 context;
+	quint8 type;
+
+	pds >> context;
+	pds >> type;
+
+
+	if ( context == 0 )
 	{
-		QDataStream ds( m_Buffer );
-		ds.setByteOrder( QDataStream::LittleEndian );
-
-		quint8 pHeader;
-		quint8 pType;
-		quint16 pLength;
-
-		ds >> pHeader;
-		ds >> pType;
-		ds >> pLength;
-
-		if ( pHeader != MU_HEADER_CONSTANT )
+		if ( type == 0 )
 		{
-			m_Socket->disconnect( );
+			pds.skipRawData( 1 );
+			QMessageBox::critical( this, "Ошибка", readNullTremilanedString( pds ) );
+			m_WebSocket->disconnect( );
+			onSocketDisconnected( );
 			return;
 		}
+	}
 
-		if ( m_Buffer.size( ) >= pLength )
+	if ( context == 2 )
+	{
+		if ( type == 0 ) // Upload accepted
 		{
-			onPackage( pType, QByteArray( m_Buffer.data( ), pLength ) );
-			m_Buffer = m_Buffer.remove( 0, pLength );
+			m_Uploading = true;
+			m_UploaedPartsQueue = 0;
+
+			ui.MUpload->setText( "Выгрузка принята." );
 		}
-		else
-			break;
+
+		if ( type == 1 ) // Mappart ok
+		{
+			m_UploaedPartsQueue--;
+
+			quint32 uploaded;
+			pds >> uploaded;
+
+			ui.MUpload->setText( "Выгружено: " + QString::number( (int)( ( (float)uploaded / (float)m_MapData.size( ) ) * 100 ) ) + "%" );
+		}
+		
+		if ( type == 2 ) // Complete
+		{
+			QMessageBox::warning( this, "Выгружено", "Все выгружено. Присвоенное имя карты: <b>" + readNullTremilanedString( pds ) + "</b>" );
+			m_WebSocket->disconnect( );
+			onSocketDisconnected( );
+		}
 	}
 }
 
@@ -382,23 +386,44 @@ void MapConfigData::onSocketConnected( )
 	QByteArray b;
 	QDataStream stream( &b, QIODevice::WriteOnly );
 	stream.setByteOrder( QDataStream::LittleEndian );
-	stream << (quint8)MU_HEADER_CONSTANT;
-	stream << (quint8)0x01;
 	stream << (quint8)0;
-	stream << (quint8)0;
+	stream << (quint8)1;
+	stream << (quint8)2;
 
 	stream << m_MapData.size( );
 	stream.writeRawData( m_UplpadMapName.toStdString( ).c_str( ), m_UplpadMapName.toStdString( ).size( ) + 1 );
-	AppendLength( b );
 
-	m_Socket->write( b );
+	m_WebSocket->sendBinaryMessage( b );
 
+	ui.MUpload->setText( "Отправляю запрос на загрузку..." );
 }
 
 void MapConfigData::onSocketDisconnected( )
 {
 	ui.MUpload->setText( "Залить карту на хостбот" );
 	ui.MUpload->setDisabled( false );
+	m_WebSocket->deleteLater( );
+	m_WebSocket = NULL;
+	m_Uploading = false;
+}
+
+void MapConfigData::openLANWindow( )
+{
+	if ( m_LanWindow )
+		m_LanWindow->activateWindow( );
+	else
+	{
+		m_LanWindow = new Lan( );
+		m_LanWindow->showNormal( );
+		m_LanWindow->setFocus( );
+
+		connect( m_LanWindow, &QWidget::destroyed, this, &MapConfigData::onLANWindowClose );
+	}
+}
+
+void MapConfigData::onLANWindowClose( )
+{
+	m_LanWindow = NULL;
 }
 
 void MapConfigData::UpdateAllowAddTabs( )

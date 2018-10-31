@@ -2,12 +2,12 @@
 <Project ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <QTDIR>C:\Qt\Qt5.11.1\5.11.1\msvc2015</QTDIR>
+    <QTDIR>C:\Qt\5.11.2\msvc2015</QTDIR>
     <LocalDebuggerEnvironment>PATH=$(QTDIR)\bin%3b$(PATH)%3b$(ProjectDir)..\StormLib\bin\StormLib_dll\Win32\Debug%3b$(QTDIR)\bin%3b$(PATH);$(ProjectDir)..\Debug</LocalDebuggerEnvironment>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <QTDIR>C:\Qt\Qt5.11.1\5.11.1\msvc2015</QTDIR>
+    <QTDIR>C:\Qt\5.11.2\msvc2015</QTDIR>
     <LocalDebuggerEnvironment>PATH=$(QTDIR)\bin%3b$(ProjectDir)..\StormLib\bin\StormLib_dll\Win32\Release%3b$(QTDIR)\bin%3b$(PATH);$(ProjectDir)..\Release</LocalDebuggerEnvironment>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
   </PropertyGroup>

@@ -13,10 +13,12 @@
 #include <QtWidgets/QMainWindow>
 #include "ui_mapconfigdata.h"
 #include <QVector>
+#include <qsslerror.h>
 #include <QTime>
 
 class CGroup;
 class QTcpSocket;
+class QWebSocket;
 
 class MapConfigData : public QMainWindow
 {
@@ -35,15 +37,20 @@ public:
 	QByteArray m_SourceMapData;
 	QByteArray m_EditedMapData;
 
+	QWidget *m_LanWindow;
+
+	bool m_Uploading;
+	QTimer *m_Timer;
+	quint32 m_UploaedPartsQueue;
+	int m_UploaedPartsMaxQueue;
+
 private:
-	QTcpSocket *m_Socket;
+	QWebSocket *m_WebSocket;
 	QString m_UplpadMapName;
 	QByteArray m_MapData;
 	quint32 m_UploadOffset;
 
 	QByteArray m_Buffer;
-
-	void onPackage( quint8 pType, QByteArray pData );
 
 private slots:
 	void menuOpen( );
@@ -51,10 +58,14 @@ private slots:
 	void onAdd( QAction *action );
 	void onCloseTab( int index );
 
+	void uploadPart( );
 	void onUploadReqest( );
-	void onSocketData( );
+	void onSocketData( QByteArray message );
 	void onSocketConnected( );
 	void onSocketDisconnected( );
+
+	void openLANWindow( );
+	void onLANWindowClose( );
 
 private:
 	Ui::MapConfigDataClass ui;
